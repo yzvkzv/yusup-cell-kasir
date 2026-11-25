@@ -1,4 +1,4 @@
-import { kv } from "@vercel/kv";
+import { createClient } from "@vercel/kv";
 import { NextResponse } from "next/server";
 import type { StoreData } from "../../../lib/store";
 
@@ -7,11 +7,16 @@ export const runtime = "nodejs";
 
 const KV_KEY = "yusup-cell:data";
 
-function kvConfigured(): boolean {
-  return Boolean(
-    process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN
-  );
-}
+// Vercel KV (nama lama) dan Upstash Redis (nama baru di dashboard Vercel)
+// memakai API yang sama. Terima kedua nama environment variable-nya,
+// supaya store yang dibuat dari menu Storage mana pun langsung jalan.
+const KV_URL =
+  process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL;
+const KV_TOKEN =
+  process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN;
+
+const kv =
+  KV_URL && KV_TOKEN ? createClient({ url: KV_URL, token: KV_TOKEN }) : null;
 
 function isValidStoreData(value: unknown): value is StoreData {
   if (!value || typeof value !== "object") return false;
@@ -25,10 +30,10 @@ function isValidStoreData(value: unknown): value is StoreData {
   );
 }
 
-// GET /api/data — ambil seluruh data kasir dari Vercel KV.
-// 503 kalau KV belum dikonfigurasi (aplikasi tetap jalan pakai localStorage).
+// GET /api/data — ambil seluruh data kasir dari Vercel KV / Upstash Redis.
+// 503 kalau store belum dikonfigurasi (aplikasi tetap jalan pakai localStorage).
 export async function GET() {
-  if (!kvConfigured()) {
+  if (!kv) {
     return NextResponse.json(
       { ok: false, error: "KV belum dikonfigurasi" },
       { status: 503 }
@@ -46,9 +51,9 @@ export async function GET() {
   }
 }
 
-// POST /api/data — simpan seluruh data kasir ke Vercel KV.
+// POST /api/data — simpan seluruh data kasir ke Vercel KV / Upstash Redis.
 export async function POST(request: Request) {
-  if (!kvConfigured()) {
+  if (!kv) {
     return NextResponse.json(
       { ok: false, error: "KV belum dikonfigurasi" },
       { status: 503 }
